@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Robert Bosch GmbH
+#
+# SPDX-License-Identifier: Apache-2.0
+
+version: "2"
+
+formatters:
+  enable:
+    - gofmt
+    - golines
+  settings:
+    golines:
+      max-len: 120
+
+linters:
+  enable:
+    - govet
+    - staticcheck

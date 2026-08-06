@@ -1,0 +1,9 @@
+├── models/                      # The Deep Domain Specialists (LoRA code & weights)
+│   └── domain-expert-lora/
+│       ├── dataset/             # Training JSON traces (Instruction-tuning pairs)
+│       ├── src/
+│       │   ├── train.py         # Fine-tuning script (using Unsloth, PEFT, or Axolotl)
+│       │   └── export.py        # Bundles and optimizes the adapter weights
+│       ├── adapter_config.json  # LoRA layer hyper-parameters
+│       └── README.md
+│

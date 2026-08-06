@@ -1,0 +1,13 @@
+├── tools/                       # Lightweight, stateless, self-describing Guard/Tool containers
+│   ├── flexray-validator/       # Single-purpose deterministic guard
+│   │   ├── src/
+│   │   │   ├── main.py          # Accepts --metadata and --input flags for the LLM
+│   │   │   └── rules.py         # Hardware verification logic
+│   │   ├── Dockerfile           # Minimalist / Distroless runtime (Ultra-fast startup)
+│   │   ├── pyproject.toml       # Isolated dependencies (e.g., using uv)
+│   │   └── README.md
+│   │
+│   └── format-guard/            # Another separate validation primitive
+│       ├── main.go
+│       ├── Dockerfile           # 0MB scratch-based static binary build
+│       └── README.md

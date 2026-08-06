@@ -1,0 +1,17 @@
+env PATH=/repo/bin:$PATH
+
+# TEST: msg
+exec mcp-run -wait -mcp=stdio -server=/repo/bin/mcp-server session.json
+exists stdout.txt
+exists stderr.txt
+cmp stdout.txt stdout.expect
+cmp stderr.txt stderr.expect
+
+
+-- session.json --
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"echo_message","arguments":{"message":"hello world from E2E test"},"task":{}}}
+-- stdout.expect --
+Processing message payload: hello world from E2E test
+-- stderr.expect --
+Message completed successfully.

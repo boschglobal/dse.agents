@@ -1,0 +1,26 @@
+skip 'Needs update for session/docker changes'
+
+env PATH=/repo/bin:$PATH
+env SIMPATH=$ENTRYHOSTDIR/tests/testdata/simer/openloop/out/sim
+exec sh -c 'envsubst < session.json > session.json.tmp && mv session.json.tmp session.json'
+
+
+# TEST: simer with path and endtime
+defer docker compose -f /repo/deployments/docker-compose.yml --progress plain down
+exec docker compose -f /repo/deployments/docker-compose.yml --progress plain up -d
+exec mcp-run -wait -mcp=http session.json
+exists stdout.txt
+exists stderr.txt
+
+exec cat stdout.txt
+stdout '\[linear\] Lua MCL: loading model: model/linear/linear.lua'
+stdout '\[input\] Lua MCL: loading model: model/input/csv.lua'
+stdout '\[linear\] Step@0.0100: input=1.300000 factor=2.300000 offset=-3.300000 output=-0.310000'
+
+cmp stderr.txt stderr.expect
+
+
+-- session.json --
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"run_simer","arguments":{"simpath":"${SIMPATH}","endtime":0.01},"task":{}}}
+-- stderr.expect --

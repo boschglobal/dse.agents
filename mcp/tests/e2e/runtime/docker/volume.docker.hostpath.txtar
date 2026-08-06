@@ -1,0 +1,26 @@
+skip 'Needs update for session/docker changes'
+
+env PATH=/repo/bin:$PATH
+
+# TEST: hostpath volume write/list/read
+exec mcp-run -wait -mcp=stdio -server=/repo/bin/mcp-server session.json
+exists stdout.txt
+exists stderr.txt
+cmp stdout.txt stdout.expect
+cmp stderr.txt stderr.expect
+
+
+-- session.json --
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_volume","arguments":{"name":"workspace","kind":"hostpath","mountPath":"/workspace","readOnly":false},"task":{}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"write_volume_file","arguments":{"volume":"workspace","path":"hello.txt","data":"hello world from hostpath volume E2E test\n"},"task":{}}}
+{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list_volume_files","arguments":{"volume":"workspace","path":"."},"task":{}}}
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"read_volume_file","arguments":{"volume":"workspace","path":"hello.txt"},"task":{}}}
+{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"delete_volume","arguments":{"volume":"workspace"},"task":{}}}
+-- stdout.expect --
+volume workspace created
+wrote hello.txt
+hello.txt
+hello world from hostpath volume E2E test
+volume workspace deleted
+-- stderr.expect --

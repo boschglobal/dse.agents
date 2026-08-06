@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 Robert Bosch GmbH
+#
+# SPDX-License-Identifier: Apache-2.0
+
+
+# Usage:
+#   docker compose -f deployments/docker-compose.yml up -d
+#   docker compose -f deployments/docker-compose.yml ps
+#   docker logs -f deployments-dse-mcp-mcp-1
+#   docker compose -f deployments/docker-compose.yml down
+
+
+services:
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - POST=1
+      - CONTAINERS=1
+      - IMAGES=1
+      - NETWORK=0 # May need 1
+      - BUILD=0
+      - EXEC=0 # May need 1
+    networks:
+      - dse-mcp-net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 2375 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  dse-mcp-server:
+    image: ${DSE_MCP_IMAGE:-ghcr.io/boschglobal/dse-mcp:latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - DOCKER_HOST=tcp://docker-proxy:2375
+    depends_on:
+      docker-proxy:
+        condition: service_started
+    networks:
+      - dse-mcp-net
+
+networks:
+  dse-mcp-net:
+    driver: bridge

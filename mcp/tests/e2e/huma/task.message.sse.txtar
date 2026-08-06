@@ -1,0 +1,24 @@
+env PATH=/repo/bin:$PATH
+
+# SETUP: start the http service
+exec mcp-server --http &
+exec sleep 0.5
+exec curl --retry 5 --retry-delay 1 --retry-connrefused http://localhost:8888/health
+
+# TEST: msg
+exec curl -sS -X POST -H 'Content-Type: application/json' -d '{"message":"Hi from E2E"}' http://localhost:8888/api/tasks/message -o task.json
+exec sh -c 'jq -r ".task_id" task.json > task_id.txt'
+exec sh -c 'curl -sS "http://localhost:8888/api/tasks/$(cat task_id.txt)/stream" -o stream.log'
+exec sh -c 'grep "^data: " stream.log | sed "s/^data: //" > events.jsonl'
+exec sh -c 'jq -R -r "fromjson? | select(.stream == \"stdout\") | .message" events.jsonl > stdout.txt'
+exec sh -c 'jq -R -r "fromjson? | select(.stream == \"stderr\") | .message" events.jsonl > stderr.txt'
+exec sh -c 'sed -i -e :a -e "/^\n*$/{\$d;N;ba" -e "}" stdout.txt'
+exec sh -c 'sed -i -e :a -e "/^\n*$/{\$d;N;ba" -e "}" stderr.txt'
+cmp stdout.txt stdout.expect
+cmp stderr.txt stderr.expect
+
+
+-- stdout.expect --
+Processing message payload: Hi from E2E
+-- stderr.expect --
+Message completed successfully.
