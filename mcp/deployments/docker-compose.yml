@@ -9,7 +9,7 @@
 #   docker logs -f deployments-dse-mcp-mcp-1
 #   docker compose -f deployments/docker-compose.yml down
 
-
+---
 services:
   docker-proxy:
     image: tecnativa/docker-socket-proxy:latest
@@ -20,9 +20,9 @@ services:
       - POST=1
       - CONTAINERS=1
       - IMAGES=1
-      - NETWORK=0 # May need 1
+      - NETWORK=0  # May need 1
       - BUILD=0
-      - EXEC=0 # May need 1
+      - EXEC=0  # May need 1
     networks:
       - dse-mcp-net
     healthcheck:

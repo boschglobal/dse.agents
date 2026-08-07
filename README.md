@@ -50,7 +50,7 @@ dse.agents
 
 ### MCP Server
 
-#### VS Code w. Copilot CLI (WSL)
+#### Visual Studio Code w. Copilot CLI (WSL)
 
 Start the MCP Server and related services:
 
@@ -69,7 +69,7 @@ Configure the MCP Server in Copilot:
 3. Provide the following configuration values when prompted:
     * Name: `dse-mcp`
     * Server Type: `HTTP`
-    * Url: `http://127.0.0.1:8089`
+    * URL: `http://127.0.0.1:8089`
 4. Accept any remaining prompts.
 
 The configuration file (`~/.copilot/mcp-config.json`) should look like this:

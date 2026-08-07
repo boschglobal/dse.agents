@@ -20,6 +20,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            ${{ matrix.path }}/go.sum
+
+      - name: Golangci-Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+
       - name: Super-Linter
         uses: super-linter/super-linter/slim@v8
         env:
@@ -29,7 +42,6 @@ jobs:
 
           # Enabled validators.
           VALIDATE_DOCKERFILE: true
-          VALIDATE_GO: true
           VALIDATE_MARKDOWN: true
           VALIDATE_NATURAL_LANGUAGE: true
           VALIDATE_YAML: true

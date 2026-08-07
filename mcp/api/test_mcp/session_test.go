@@ -214,7 +214,8 @@ func createAndRequireTaskSuccess(
 
 	activeSessions := f.WaitForSessionCount(t, 1)
 	require.NotEmpty(t, activeSessions)
-	requireSessionIdle(t, f, activeSessions[0].ID)
+	sessionID := activeSessions[0].ID
+	requireSessionIdle(t, f, sessionID)
 
 	createResult, err := f.CreateTaskFromTool(t, toolName, args)
 	require.NoError(t, err)
@@ -233,5 +234,6 @@ func createAndRequireTaskSuccess(
 		10*time.Millisecond,
 	)
 
+	requireSessionIdle(t, f, sessionID)
 	return taskResult
 }

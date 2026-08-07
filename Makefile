@@ -43,6 +43,18 @@ $(FORWARD_TARGETS):
 		fi; \
 	done
 
+.PHONY: super-linter
+super-linter: lint
+	docker run --rm --volume $$(pwd):/tmp/lint \
+		--env RUN_LOCAL=true \
+		--env DEFAULT_BRANCH=main \
+		--env IGNORE_GITIGNORED_FILES=true \
+		--env FILTER_REGEX_EXCLUDE="(doc/content/.*)" \
+		--env VALIDATE_DOCKERFILE=true \
+		--env VALIDATE_MARKDOWN=true \
+		--env VALIDATE_NATURAL_LANGUAGE=true \
+		--env VALIDATE_YAML=true \
+		ghcr.io/super-linter/super-linter:slim-v8
 
 .PHONY: check
 check: copyright-fix

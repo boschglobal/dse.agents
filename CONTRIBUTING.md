@@ -74,7 +74,7 @@ Signed-off-by: Random J Developer <random@developer.example.org>
 to every commit message using your real name or your pseudonym and a valid
 email address.
 
-If you have set your `user.name` and `user.email` git configs you can
+If you have set your `user.name` and `user.email` Git configs you can
 automatically sign the commit by running the git-commit command with the `-s`
 option.  There may be multiple sign-offs if more than one developer was
 involved in authoring the contribution.
@@ -111,4 +111,3 @@ contribution was provided directly to me by some other person who certified
 holder(s) to the [NOTICE](NOTICE) file as part of your contribution.
 
 [DCO]: https://developercertificate.org/
-[NumPyDoc]: https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_numpy.html#example-numpy

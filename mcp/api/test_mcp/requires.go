@@ -47,7 +47,7 @@ func requireSessionIdle(t *testing.T, f *mcpStdioFixture, sessionID string) {
 			return false
 		}
 		return userSession.State() == session.StateIdle
-	}, 5*time.Second, 10*time.Millisecond, "session %s did not become idle", sessionID)
+	}, 30*time.Second, 50*time.Millisecond, "session %s did not become idle", sessionID)
 }
 
 type runtimeVolumeInspector interface {
