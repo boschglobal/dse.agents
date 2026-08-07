@@ -1,0 +1,210 @@
+---
+name: CI
+
+on:  # yamllint disable-line rule:truthy
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BASE_NAME: ${{ github.repository_owner }}/dse
+  PACKAGE_VERSION: 0.0.2
+
+jobs:
+  build:
+    name: ${{ matrix.module }}
+    runs-on: [ubuntu-latest]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: mcp
+            path: mcp
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            ${{ matrix.path }}/go.sum
+
+      - name: Build package metadata
+        id: package_meta
+        uses: docker/metadata-action@v5
+        with:
+          images: dse/agents
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - name: Get package version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          echo "PACKAGE_VERSION=${{ fromJSON(steps.package_meta.outputs.json).labels['org.opencontainers.image.version'] }}" >> $GITHUB_ENV
+
+      - name: Build
+        run: |
+          make -C ${{ matrix.path }} build
+
+      - name: Test
+        run: |
+          make -C ${{ matrix.path }} test
+
+  docker:
+    name: Docker ${{ matrix.image }}
+    runs-on: [ubuntu-latest]
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: mcp
+            context: mcp
+            dockerfile: mcp/build/package/mcp.Dockerfile
+            image: mcp
+
+          - module: mcp
+            context: mcp
+            dockerfile: mcp/build/package/message.Dockerfile
+            image: message
+
+          - module: mcp
+            context: mcp
+            dockerfile: mcp/build/package/fileprint.Dockerfile
+            image: fileprint
+
+          - module: mcp
+            context: mcp
+            dockerfile: mcp/build/package/helper.Dockerfile
+            image: helper
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            name=${{ env.REGISTRY }}/${{ env.IMAGE_BASE_NAME }}-${{ matrix.image }},enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            name=dse-${{ matrix.image }},enable=${{ !startsWith(github.ref, 'refs/tags/') }}
+            name=dse-${{ matrix.image }},enable=true
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=test
+
+      - name: Version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          echo "PACKAGE_VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}" >> $GITHUB_ENV
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          push: false
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          build-args: |
+            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=docker,dest=/tmp/${{ matrix.image }}.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image_${{ matrix.image }}
+          path: |
+            /tmp/${{ matrix.image }}.tar
+          retention-days: 1
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: [ubuntu-latest]
+    needs: [build, docker]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Create Release from Tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+        run: |
+          gh release create "$tag" \
+            --notes-from-tag
+
+  publish-docker:
+    name: Publish Docker images
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: [ubuntu-latest]
+    needs: [release]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download image artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: image_*
+          path: /tmp/images
+          merge-multiple: true
+
+      - name: Load and Push Images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+
+          image_archives=(/tmp/images/*.tar)
+
+          if [ "${#image_archives[@]}" -eq 0 ]; then
+            echo "No Docker image artifacts found."
+            exit 0
+          fi
+
+          for image_archive in "${image_archives[@]}"; do
+            image="$(basename "${image_archive}" .tar)"
+            image_repo="${REGISTRY}/${IMAGE_BASE_NAME}-${image}"
+
+            echo "::group::Load ${image_archive}"
+            docker load --input "${image_archive}"
+            echo "::endgroup::"
+
+            echo "::group::Push ${image_repo}"
+            docker image push --all-tags "${image_repo}"
+            echo "::endgroup::"
+          done
+
+          docker image ls -a
