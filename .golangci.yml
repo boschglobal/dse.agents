@@ -13,6 +13,7 @@ formatters:
       max-len: 120
 
 linters:
+  default: none
   enable:
     - govet
     - staticcheck

@@ -1,0 +1,87 @@
+---
+name: Linter
+
+on:  # yamllint disable-line rule:truthy
+  push:
+  pull_request:
+    types: [assigned, opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      modules: ${{ steps.find.outputs.modules }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: find
+        name: Find Go modules
+        shell: bash
+        run: |
+          modules="$(find . \
+            -name go.mod \
+            -not -path './vendor/*' \
+            -not -path './.git/*' \
+            -printf '%h\n' | sed 's#^\./##' | sort -u)"
+
+          if [ -z "$modules" ]; then
+            echo "No go.mod files found"
+            exit 1
+          fi
+
+          json="$(printf '%s\n' "$modules" | jq -R . | jq -s -c .)"
+          echo "modules=$json" >> "$GITHUB_OUTPUT"
+
+  golangci-lint:
+    needs: discover
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.discover.outputs.modules) }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: stable
+          cache: true
+          cache-dependency-path: ${{ matrix.module }}/go.sum
+
+      - name: Golangci-Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: ${{ matrix.module }}
+
+  super_linter:
+    name: Lint Code Base
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Super-Linter
+        uses: super-linter/super-linter/slim@v8
+        env:
+          VALIDATE_ALL_CODEBASE: true
+          DEFAULT_BRANCH: main
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # Enabled validators.
+          VALIDATE_DOCKERFILE: true
+          VALIDATE_MARKDOWN: true
+          VALIDATE_NATURAL_LANGUAGE: true
+          VALIDATE_YAML: true
+
+          # Keep generated/vendor content out of linting if those appear later.
+          FILTER_REGEX_EXCLUDE: (^|/)vendor/.*|(^|/)licenses/.*
