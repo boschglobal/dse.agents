@@ -32,6 +32,10 @@ profile.cov
 # env file
 .env
 
+# Go work ... only causes problems.
+go.work
+go.work.sum
+
 # Editor/IDE
 # .idea/
 # .vscode/

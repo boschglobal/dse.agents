@@ -23,10 +23,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.work
-          cache-dependency-path: |
-            go.work.sum
-            ${{ matrix.path }}/go.sum
+          go-version: 'stable'
+          cache: true
 
       - name: Golangci-Lint
         uses: golangci/golangci-lint-action@v9

@@ -38,10 +38,8 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: go.work
-          cache-dependency-path: |
-            go.work.sum
-            ${{ matrix.path }}/go.sum
+          go-version-file: ${{ matrix.path }}/go.mod
+          cache-dependency-path: ${{ matrix.path }}/go.sum
 
       - name: Build package metadata
         id: package_meta
@@ -60,6 +58,14 @@ jobs:
       - name: Build
         run: |
           make -C ${{ matrix.path }} build
+
+      - name: Docker
+        run: |
+          if make -C ${{ matrix.path }} -n docker; then
+            make -C ${{ matrix.path }} docker
+          else
+            echo "No docker target for ${{ matrix.path }}; skipping."
+          fi
 
       - name: Test
         run: |
