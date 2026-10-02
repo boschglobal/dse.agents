@@ -1,0 +1,15 @@
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack_sandbox
+    ports:
+      - "127.0.0.1:4566:4566"
+      - "127.0.0.1:4510-4559:4510-4559"
+    environment:
+      - DEBUG=1
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN:-}
+      - ECR_ENDPOINT_STRATEGY=off
+      - SIMULATION_BUCKET_NAME=${SIMULATION_BUCKET_NAME:-my-test-bucket}
+    volumes:
+      - ./init-hooks:/etc/localstack/init/ready.d
+      - "/var/run/docker.sock:/var/run/docker.sock"
