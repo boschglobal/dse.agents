@@ -39,9 +39,7 @@ done
 # Detect environment routing
 if [[ -n "${AWS_ENDPOINT_URL:-}" ]]; then
     AWS_ARGS+=(--endpoint-url "$AWS_ENDPOINT_URL")
-    REGISTRY_HOST="${AWS_ENDPOINT_URL#http://}"
-    REGISTRY_HOST="${REGISTRY_HOST#https://}"
-    REGISTRY_HOST="${REGISTRY_HOST%/}"
+    REGISTRY_HOST="${LOCAL_REGISTRY_HOST:-localhost:5001}"
     ENV_TARGET="Local Sandbox ($AWS_ENDPOINT_URL)"
 else
     ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)

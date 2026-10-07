@@ -1,6 +1,6 @@
 services:
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:4.14.0
     container_name: localstack_sandbox
     ports:
       - "127.0.0.1:4566:4566"
@@ -13,3 +13,9 @@ services:
     volumes:
       - ./init-hooks:/etc/localstack/init/ready.d
       - "/var/run/docker.sock:/var/run/docker.sock"
+
+  local-registry:
+    image: registry:2
+    container_name: local_docker_registry
+    ports:
+      - "127.0.0.1:5001:5000"

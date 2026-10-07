@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # Add your external GHCR images here.
 IMAGES=(
@@ -12,14 +12,22 @@ AWS_ARGS=()
 
 # Detect runtime environment structure from sourced variables
 if [[ -n "${AWS_ENDPOINT_URL:-}" ]]; then
-    # LOCALSTACK ENVIRONMENT
-    AWS_ARGS+=(--endpoint-url "$AWS_ENDPOINT_URL")
-    REGISTRY_HOST="${AWS_ENDPOINT_URL#http://}"
-    REGISTRY_HOST="${REGISTRY_HOST#https://}"
-    REGISTRY_HOST="${REGISTRY_HOST%/}"
-    echo "Targeting Local Sandbox Registry: $REGISTRY_HOST"
-    echo "Authenticating Docker with LocalStack ECR..."
-    aws "${AWS_ARGS[@]}" ecr get-login-password | docker login --username AWS --password-stdin "$REGISTRY_HOST"
+    # LOCAL SANDBOX ENVIRONMENT
+    REGISTRY_HOST="${LOCAL_REGISTRY_HOST:-localhost:5001}"
+    echo "Targeting local Docker Registry: $REGISTRY_HOST"
+    echo "Waiting for the local registry..."
+    REGISTRY_READY=false
+    for _ in {1..30}; do
+        if curl -fsS "http://$REGISTRY_HOST/v2/" >/dev/null; then
+            REGISTRY_READY=true
+            break
+        fi
+        sleep 1
+    done
+    if [[ "$REGISTRY_READY" != true ]]; then
+        echo "Error: Local Docker Registry at '$REGISTRY_HOST' is unavailable." >&2
+        exit 1
+    fi
 else
     # REAL AWS CLOUD ENVIRONMENT
     # Query your actual AWS Account ID and targeted region to map the target host string
@@ -36,7 +44,7 @@ echo "Building S3 download and extraction image..."
 FETCHER_IMAGE="$FETCHER_IMAGE" "$SCRIPT_DIR/build-fetcher.sh"
 IMAGES+=("$FETCHER_IMAGE")
 
-echo "Synchronizing images to ECR ($REGISTRY_HOST)..."
+echo "Synchronizing images to registry ($REGISTRY_HOST)..."
 echo "--------------------------------------------------------"
 
 for FULL_IMAGE in "${IMAGES[@]}"; do
@@ -52,20 +60,14 @@ for FULL_IMAGE in "${IMAGES[@]}"; do
     IMAGE_NAME=$(echo "$BASE_IMAGE_WITH_TAG" | cut -d':' -f1)
     IMAGE_TAG=$(echo "$BASE_IMAGE_WITH_TAG" | cut -d':' -f2)
 
-    # 3. Automatically provision the matching ECR repository if missing
-    if ! aws "${AWS_ARGS[@]}" ecr describe-repositories --repository-names "$IMAGE_NAME" >/dev/null 2>&1; then
-        echo "Creating ECR repository: $IMAGE_NAME"
-        aws "${AWS_ARGS[@]}" ecr create-repository --repository-name "$IMAGE_NAME"
-    fi
+    # 3. Retag the image for the destination registry
+    TARGET_IMAGE_URI="$REGISTRY_HOST/$IMAGE_NAME:$IMAGE_TAG"
+    echo "Retagging local image -> '$TARGET_IMAGE_URI'"
+    docker tag "$FULL_IMAGE" "$TARGET_IMAGE_URI"
 
-    # 4. Retag the image to point to the computed target registry layout
-    TARGET_ECR_URI="$REGISTRY_HOST/$IMAGE_NAME:$IMAGE_TAG"
-    echo "Retagging local build -> '$TARGET_ECR_URI'"
-    docker tag "$FULL_IMAGE" "$TARGET_ECR_URI"
-
-    # 5. Push straight to the destination ECR engine
+    # 5. Push to the destination registry
     echo "Pushing image to registry..."
-    docker push "$TARGET_ECR_URI"
+    docker push "$TARGET_IMAGE_URI"
     echo "Done with $IMAGE_NAME."
     echo "--------------------------------------------------------"
 done
