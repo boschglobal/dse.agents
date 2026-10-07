@@ -7,8 +7,8 @@
 #
 
 **/out/*
-!**/out/*/
-!**/out/sim/
+!mcp/**/out/*/
+!mcp/**/out/sim/
 
 # Binaries for programs and plugins
 *.exe
