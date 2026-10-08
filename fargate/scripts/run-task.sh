@@ -15,10 +15,11 @@ SIMULATION_BUCKET_NAME="${SIMULATION_BUCKET_NAME:-my-test-bucket}"
 
 # Endpoint Check
 AWS_ARGS=()
-IS_LOCAL=false
 if [[ -n "${AWS_ENDPOINT_URL:-}" ]]; then
     AWS_ARGS+=(--endpoint-url "$AWS_ENDPOINT_URL")
-    IS_LOCAL=true
+    IS_SANDBOX=true
+else
+    IS_SANDBOX=false
 fi
 
 usage() {
@@ -82,6 +83,54 @@ IFS=',' read -r -a SUBNET_ARRAY <<< "$SUBNET_IDS"
 SUBNET_JSON=$(printf '%s\n' "${SUBNET_ARRAY[@]}" | jq -R . | jq -s .)
 NETWORK_CONFIG=$(jq -cn --argjson subnets "$SUBNET_JSON" '{awsvpcConfiguration:{subnets:$subnets,assignPublicIp:"ENABLED"}}')
 
+if [[ "$IS_SANDBOX" == true ]]; then
+    SANDBOX_VOLUME=$(docker volume create)
+    SANDBOX_TASK_DEF=""
+    sandbox_cleanup() {
+        docker volume rm "$SANDBOX_VOLUME" >/dev/null 2>&1 || true
+        if [[ -n "$SANDBOX_TASK_DEF" ]]; then
+            aws "${AWS_ARGS[@]}" ecs deregister-task-definition \
+                --task-definition "$SANDBOX_TASK_DEF" >/dev/null 2>&1 || true
+        fi
+    }
+    trap sandbox_cleanup EXIT
+
+    SANDBOX_COMMAND='
+for attempt in {1..100}; do
+    if [[ -f /sim/.simer-ready ]]; then
+        cd /sim || exit 1
+        exec /usr/local/bin/simer -endtime "${DURATION:-10.0}"
+    fi
+    sleep 0.1
+done
+echo "ERROR: simulation extraction did not complete within 10 seconds" >&2
+exit 1
+'
+    TASK_DEFINITION=$(aws "${AWS_ARGS[@]}" ecs describe-task-definition \
+        --task-definition "$TASK_DEF_FAMILY" --query taskDefinition --output json)
+    SANDBOX_DEFINITION=$(jq --arg volume "$SANDBOX_VOLUME" \
+        --arg app "$CONTAINER_NAME" --arg sidecar "$SIDECAR_CONTAINER_NAME" \
+        --arg command "$SANDBOX_COMMAND" '
+        del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+            .compatibilities, .registeredAt, .registeredBy, .deregisteredAt)
+        | .family += "-sandbox"
+        | .volumes = [{name: "shared-data", host: {sourcePath: $volume}}]
+        | .containerDefinitions |= map(
+            if .name == $sidecar then
+                .command[0] += "; touch /mnt/shared/.simer-ready"
+            elif .name == $app then
+                del(.dependsOn)
+                | .environment = ((.environment // []) + [{name: "SIMER_EXE", value: "/bin/bash"}])
+                | .command = ["-c", $command]
+                | (.mountPoints[] | select(.sourceVolume == "shared-data")) .readOnly = false
+            else . end)
+        ' <<<"$TASK_DEFINITION")
+    SANDBOX_TASK_DEF=$(aws "${AWS_ARGS[@]}" ecs register-task-definition \
+        --cli-input-json "$SANDBOX_DEFINITION" \
+        --query taskDefinition.taskDefinitionArn --output text)
+    TASK_DEF_FAMILY="$SANDBOX_TASK_DEF"
+fi
+
 echo "Launching Fargate Task: $TASK_NAME..."
 
 # 1. Trigger the run-task command and capture the JSON response payload
@@ -90,7 +139,9 @@ RUN_OUTPUT=$(aws "${AWS_ARGS[@]}" ecs run-task \
   --task-definition "$TASK_DEF_FAMILY" \
   --launch-type FARGATE \
   --network-configuration "$NETWORK_CONFIG" \
-  --overrides "$OVERRIDES")
+    --overrides "$OVERRIDES" \
+    --cli-connect-timeout 3 \
+    --cli-read-timeout 20)
 
 # 2. Extract Task Identifier Metadata
 if ! TASK_ARN=$(jq -er '.tasks[0].taskArn // empty' <<<"$RUN_OUTPUT"); then
@@ -108,35 +159,42 @@ echo "--------------------------------------------------------"
 
 # Define the log cleanup routine for graceful exit handling
 cleanup() {
+    if [[ "$IS_SANDBOX" == true ]]; then
+        for LOG_PID in "${SIDECAR_LOG_PID:-}" "${SIMER_LOG_PID:-}"; do
+            if [[ -n "$LOG_PID" ]]; then kill "$LOG_PID" 2>/dev/null || true; fi
+        done
+    fi
     echo ""
     echo "Log tailing disconnected."
     exit 0
 }
 trap cleanup INT TERM
 
-if [ "$IS_LOCAL" = true ]; then
-    # LOCALSTACK INTERACTION WORKFLOW:
-    # LocalStack translates Fargate tasks directly into local Docker container names.
-    # The standard naming format is: localstack_sandbox (or container name) hosting the runtime hash.
-    # We inspect the Docker space using our task identifier to attach to stdout.
+if [[ "$IS_SANDBOX" == true ]]; then
+    SIDECAR_DOCKER_CONTAINER="ministack-ecs-${TASK_ID:0:8}-$SIDECAR_CONTAINER_NAME"
+    SIMER_DOCKER_CONTAINER="ministack-ecs-${TASK_ID:0:8}-$CONTAINER_NAME"
 
-    echo "Locating sandbox container runtime..."
-    sleep 2 # Let the local cluster construct the Docker container instance
+    wait_for_container() {
+        local container="$1"
+        for attempt in {1..300}; do
+            if docker inspect "$container" >/dev/null 2>&1; then
+                return 0
+            fi
+            sleep 0.1
+        done
+        echo "Error: Container '$container' was not created within 30 seconds." >&2
+        return 1
+    }
 
-    DOCKER_CONTAINER_ID=$(docker ps --filter "label=net.localstack.project=localstack" --filter "name=$TASK_ID" -q | head -n 1)
-
-    if [[ -z "$DOCKER_CONTAINER_ID" ]]; then
-        # Fallback search matching standard task format structures
-        DOCKER_CONTAINER_ID=$(docker ps -a --format '{{.ID}} {{.Names}}' | grep "$TASK_ID" | cut -d' ' -f1 | head -n 1)
-    fi
-
-    if [[ -n "$DOCKER_CONTAINER_ID" ]]; then
-        # Follow the live container stream directly down to the terminal frame
-        docker logs -f "$DOCKER_CONTAINER_ID"
-    else
-        echo "Warning: Could not capture explicit Docker container log bindings for $TASK_ID."
-        echo "Check main LocalStack engine log prints via: docker logs -f localstack_sandbox"
-    fi
+    wait_for_container "$SIDECAR_DOCKER_CONTAINER"
+    wait_for_container "$SIMER_DOCKER_CONTAINER"
+    echo "Streaming task stdout/stderr directly from Docker..."
+    docker logs --follow "$SIDECAR_DOCKER_CONTAINER" 2>&1 | sed -u 's/^/[sidecar] /' &
+    SIDECAR_LOG_PID=$!
+    docker logs --follow "$SIMER_DOCKER_CONTAINER" 2>&1 | sed -u 's/^/[Simer] /' &
+    SIMER_LOG_PID=$!
+    wait "$SIDECAR_LOG_PID"
+    wait "$SIMER_LOG_PID"
 
 else
     # REAL AWS WORKFLOW:

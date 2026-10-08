@@ -15,7 +15,7 @@ Parameters:
   SimulationS3EndpointUrl:
     Type: String
     Default: ''
-    Description: Optional S3 endpoint reachable from the task container, for example LocalStack.
+    Description: Optional S3 endpoint reachable from the task container, for example MiniStack.
 
   AppImageUri:
     Type: String
@@ -86,8 +86,8 @@ Resources:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: customer-s3-processing-task
-      Cpu: '1024'
-      Memory: '2048'
+      Cpu: '4096'
+      Memory: '8192'
       NetworkMode: awsvpc
       RequiresCompatibilities:
         - FARGATE
@@ -111,6 +111,16 @@ Resources:
               - Name: AWS_ENDPOINT_URL
                 Value: !Ref SimulationS3EndpointUrl
               - !Ref AWS::NoValue
+            - !If
+              - HasSimulationS3Endpoint
+              - Name: AWS_ACCESS_KEY_ID
+                Value: test
+              - !Ref AWS::NoValue
+            - !If
+              - HasSimulationS3Endpoint
+              - Name: AWS_SECRET_ACCESS_KEY
+                Value: test
+              - !Ref AWS::NoValue
           EntryPoint:
             - /bin/sh
             - -c
@@ -132,7 +142,7 @@ Resources:
               awslogs-stream-prefix: downloader
         - Name: dse-simer-container
           Image: !Ref AppImageUri
-          Cpu: 256
+          Cpu: 3840
           Memory: 512
           Essential: true
           DependsOn:

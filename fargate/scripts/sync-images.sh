@@ -12,22 +12,13 @@ AWS_ARGS=()
 
 # Detect runtime environment structure from sourced variables
 if [[ -n "${AWS_ENDPOINT_URL:-}" ]]; then
-    # LOCAL SANDBOX ENVIRONMENT
-    REGISTRY_HOST="${LOCAL_REGISTRY_HOST:-localhost:5001}"
-    echo "Targeting local Docker Registry: $REGISTRY_HOST"
-    echo "Waiting for the local registry..."
-    REGISTRY_READY=false
-    for _ in {1..30}; do
-        if curl -fsS "http://$REGISTRY_HOST/v2/" >/dev/null; then
-            REGISTRY_READY=true
-            break
-        fi
-        sleep 1
-    done
-    if [[ "$REGISTRY_READY" != true ]]; then
-        echo "Error: Local Docker Registry at '$REGISTRY_HOST' is unavailable." >&2
-        exit 1
-    fi
+    # MiniStack exposes ECR's API and Docker Registry V2 protocol on its gateway.
+    AWS_ARGS+=(--endpoint-url "$AWS_ENDPOINT_URL")
+    REGISTRY_HOST="${MINISTACK_ECR_REGISTRY_HOST:-localhost:4566}"
+    echo "Targeting MiniStack ECR: $REGISTRY_HOST"
+    echo "Authenticating Docker with MiniStack ECR..."
+    aws "${AWS_ARGS[@]}" ecr get-login-password \
+        | docker login --username AWS --password-stdin "$REGISTRY_HOST"
 else
     # REAL AWS CLOUD ENVIRONMENT
     # Query your actual AWS Account ID and targeted region to map the target host string
@@ -44,7 +35,7 @@ echo "Building S3 download and extraction image..."
 FETCHER_IMAGE="$FETCHER_IMAGE" "$SCRIPT_DIR/build-fetcher.sh"
 IMAGES+=("$FETCHER_IMAGE")
 
-echo "Synchronizing images to registry ($REGISTRY_HOST)..."
+echo "Synchronizing images to ECR ($REGISTRY_HOST)..."
 echo "--------------------------------------------------------"
 
 for FULL_IMAGE in "${IMAGES[@]}"; do
@@ -60,9 +51,17 @@ for FULL_IMAGE in "${IMAGES[@]}"; do
     IMAGE_NAME=$(echo "$BASE_IMAGE_WITH_TAG" | cut -d':' -f1)
     IMAGE_TAG=$(echo "$BASE_IMAGE_WITH_TAG" | cut -d':' -f2)
 
-    # 3. Retag the image for the destination registry
+    # ECR's Docker V2 endpoint requires a repository to exist before pushing.
+    if [[ -n "${AWS_ENDPOINT_URL:-}" ]] \
+        && ! aws "${AWS_ARGS[@]}" ecr describe-repositories \
+            --repository-names "$IMAGE_NAME" >/dev/null 2>&1; then
+        echo "Creating MiniStack ECR repository: $IMAGE_NAME"
+        aws "${AWS_ARGS[@]}" ecr create-repository --repository-name "$IMAGE_NAME" >/dev/null
+    fi
+
+    # Use MiniStack's gateway endpoint for Docker V2; its ECR API state is shared.
     TARGET_IMAGE_URI="$REGISTRY_HOST/$IMAGE_NAME:$IMAGE_TAG"
-    echo "Retagging local image -> '$TARGET_IMAGE_URI'"
+    echo "Retagging image -> '$TARGET_IMAGE_URI'"
     docker tag "$FULL_IMAGE" "$TARGET_IMAGE_URI"
 
     # 5. Push to the destination registry

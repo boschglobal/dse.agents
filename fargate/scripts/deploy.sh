@@ -39,8 +39,8 @@ done
 # Detect environment routing
 if [[ -n "${AWS_ENDPOINT_URL:-}" ]]; then
     AWS_ARGS+=(--endpoint-url "$AWS_ENDPOINT_URL")
-    REGISTRY_HOST="${LOCAL_REGISTRY_HOST:-localhost:5001}"
-    ENV_TARGET="Local Sandbox ($AWS_ENDPOINT_URL)"
+    REGISTRY_HOST="${MINISTACK_ECR_REGISTRY_HOST:-localhost:4566}"
+    ENV_TARGET="MiniStack sandbox ($AWS_ENDPOINT_URL)"
 else
     ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
     REGION="${AWS_DEFAULT_REGION:-us-east-1}"
