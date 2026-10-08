@@ -1,0 +1,16 @@
+simulation
+channel physical
+
+uses
+Csv file:///{{.PWD}}/csv.lua
+Linear file:///{{.PWD}}/linear.lua
+
+model input Csv
+channel physical signal_channel
+envar CSV_FILE model/input/data/input.csv
+file input.csv data/input.csv
+file signalgroup.yaml data/input_sg.yaml
+
+model linear Linear
+channel physical signal_channel
+file signalgroup.yaml data/linear_sg.yaml

@@ -23,19 +23,33 @@ and interpret the results of co-simulations which utilise the DSE Platform
 
 ### Contents
 
-- [Usage](#usage)
-  - [MCP Server](#mcp-server)
-- [Development](#development)
-  - [Build](#build)
-  - [Packages](#packages)
+- [Introduction](#introduction)
+  - [Project Structure](#project-structure)
+- [MCP Server](#mcp-server)
+  - [Usage](#usage)
+    - [Visual Studio Code w. Copilot CLI (WSL)](#visual-studio-code-w-copilot-cli-wsl)
+    - [Example Prompt](#example-prompt)
+  - [Development](#development)
+    - [Build](#build)
+    - [Packages](#packages)
+- [Fargate Task](#fargate-task)
+  - [Usage](#usage-1)
+- [Contribute](#contribute)
+- [License](#license)
+  - [Third Party Licenses](#third-party-licenses)
 
 
 ### Project Structure
 
 ```text
-dse.agents
+dse.agents/
 ├── doc/                    # Content for documentation systems
-└── mcp                     # MCP Server module
+├── fargate/                # Fargate Task deployment
+│   ├── deployments/        # CloudFormation and MiniStack deployments
+│   ├── pkg/                # Sidecar containers
+│   ├── scripts/            # Automation scripts
+│   └── testdata/           # OpenLoop example simulation (Simer format)
+└── mcp/                    # MCP Server module
     ├── api/                # API implementations for REST (Huma) and MCP
     ├── build/package/      # Dockerfiles and tool packaging
     ├── cmd/                # CLI tools
@@ -46,9 +60,9 @@ dse.agents
 ```
 
 
-## Usage
+## MCP Server
 
-### MCP Server
+### Usage
 
 #### Visual Studio Code w. Copilot CLI (WSL)
 
@@ -120,9 +134,9 @@ The simulation completed cleanly with no errors.
 ```
 
 
-## Development
+### Development
 
-### Build
+#### Build
 
 ```bash
 git clone https://github.com/boschglobal/dse.agents.git
@@ -143,7 +157,7 @@ make test_e2e
 make help
 ```
 
-### Packages
+#### Packages
 
 <!-- markdownlint-disable MD060 -->
 | Package | Registry/Image | Description / Purpose |
@@ -153,6 +167,39 @@ make help
 | Fileprint | ghcr.io/boschglobal/dse-fileprint | Debugging tool for agents to verify volume mapping in MCP task sessions |
 <!-- markdownlint-enable MD060 -->
 
+
+## Fargate Task
+
+A Fargate task combines a Simer container with a downloader sidecar and a shared
+volume to run simulation packages uploaded to an S3 bucket. The sidecar downloads
+and extracts the package into the shared volume, which Simer accesses at the
+ `/sim` volume mount.
+
+
+### Usage
+
+Deploy the Fargate task to a local development sandbox using MiniStack:
+
+```bash
+# Load the configuration.
+cd fargate
+source scripts/env.local
+
+# Build sidecar containers.
+make docker
+
+# Start the local sandbox deployment.
+make start
+
+# Build and package the OpenLoop example simulation.
+make openloop
+
+# Upload the package and run 10 seconds of simulation time.
+make run testdata/simer/openloop/out/openloop.zip 10.0
+
+# Stop the local sandbox deployment.
+make stop
+```
 
 
 ## Contribute

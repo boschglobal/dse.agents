@@ -1,0 +1,16 @@
+# SPDX-FileCopyrightText: 2026 Robert Bosch GmbH
+#
+# SPDX-License-Identifier: Apache-2.0
+
+---
+kind: SignalGroup
+metadata:
+  name: signal_vector
+  labels:
+    channel: signal_vector
+    model: input
+spec:
+  signals:
+    - signal: input
+    - signal: factor
+    - signal: offset
