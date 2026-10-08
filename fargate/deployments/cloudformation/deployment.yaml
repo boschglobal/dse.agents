@@ -1,3 +1,4 @@
+---
 AWSTemplateFormatVersion: '2010-09-09'
 Description: 'Deploys an ECS Fargate task with an S3 downloader sidecar.'
 

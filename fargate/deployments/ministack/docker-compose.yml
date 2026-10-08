@@ -1,3 +1,4 @@
+---
 services:
   ministack:
     image: ministackorg/ministack:latest
